@@ -37,25 +37,34 @@ contract BondingCurveToken is ERC20, AccessControl {
     /**
      * @notice Buy tokens according to the bonding curve price.
      * @param amount The amount of tokens to buy.
+     * @param maxCost The maximum cost the buyer is willing to pay to handle slippage.
      * @dev The cost is determined by the current supply and the bonding curve.
      */
-    function buy(uint256 amount) public payable {
+    function buy(uint256 amount, uint256 maxCost) public payable {
         uint256 cost = getCostForTokens(amount);
+        require(cost <= maxCost, "Slippage exceeded");
         require(msg.value >= cost, "Insufficient ETH sent");
 
         lastTransactionTime[msg.sender] = block.timestamp;
         _mint(msg.sender, amount);
+
+        // Refund any excess ETH
+        if (msg.value > cost) {
+            payable(msg.sender).transfer(msg.value - cost);
+        }
     }
 
     /**
      * @notice Sell tokens back to the contract according to the bonding curve price.
      * @param amount The amount of tokens to sell.
+     * @param minRevenue The minimum revenue the seller expects to handle slippage.
      * @dev Enforces a time lock between transactions to mitigate sandwich attacks.
      */
-    function buyback(uint256 amount) public timeLock {
+    function buyback(uint256 amount, uint256 minRevenue) public timeLock {
         require(balanceOf(msg.sender) >= amount, "Insufficient token balance");
 
         uint256 revenue = getRevenueForTokens(amount);
+        require(revenue >= minRevenue, "Slippage exceeded");
 
         _burn(msg.sender, amount);
 
